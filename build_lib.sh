@@ -4,11 +4,11 @@ set -e
 cd "$(dirname "$0")"
 
 # Original Objective-C build (renderer.m kept for comparison):
-# clang -shared -o librenderer.dylib renderer.m \
-#   -framework Cocoa \
-#   -framework Metal \
-#   -framework QuartzCore \
-#   -arch arm64
+ clang -shared -o librendererOC.dylib renderer.m \
+   -framework Cocoa \
+   -framework Metal \
+   -framework QuartzCore \
+   -arch arm64
 
 swiftc -emit-library -O \
   -module-name Renderer \

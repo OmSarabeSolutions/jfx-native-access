@@ -43,8 +43,12 @@ import java.lang.foreign.Linker;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.SymbolLookup;
 import java.lang.foreign.ValueLayout;
+import java.io.IOException;
+import java.io.InputStream;
 import java.lang.invoke.MethodHandle;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.Paths;
 
 public class NativeMetalApp extends Application {
@@ -61,7 +65,27 @@ public class NativeMetalApp extends Application {
 
     @Override
     public void init() throws Exception {
-        renderer = new MetalRenderer(Paths.get("librenderer.dylib").toAbsolutePath());
+        renderer = new MetalRenderer(locateDylib());
+    }
+
+    /**
+     * Uses ./librenderer.dylib when present (jbang / dev runs), otherwise extracts
+     * the copy bundled at the root of the jar to a temp file.
+     */
+    private static Path locateDylib() throws IOException {
+        Path local = Paths.get("librenderer.dylib").toAbsolutePath();
+        if (Files.exists(local)) {
+            return local;
+        }
+        try (InputStream in = NativeMetalApp.class.getResourceAsStream("/librenderer.dylib")) {
+            if (in == null) {
+                throw new IOException("librenderer.dylib not found in working directory or on classpath");
+            }
+            Path tmp = Files.createTempFile("librenderer", ".dylib");
+            tmp.toFile().deleteOnExit();
+            Files.copy(in, tmp, StandardCopyOption.REPLACE_EXISTING);
+            return tmp;
+        }
     }
 
     @Override
@@ -203,6 +227,17 @@ public class NativeMetalApp extends Application {
 
     public static void main(String[] args) {
         launch(args);
+    }
+
+    /**
+     * Entry point for the full (fat) jar. The JVM refuses to start a main class that extends
+     * {@link Application} when JavaFX is on the classpath instead of the module path
+     * ("JavaFX runtime components are missing"), so the fat jar starts from this class instead.
+     */
+    public static final class Launcher {
+        public static void main(String[] args) {
+            Application.launch(NativeMetalApp.class, args);
+        }
     }
 
     /**
