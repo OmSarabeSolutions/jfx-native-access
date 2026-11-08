@@ -29,11 +29,12 @@ There are other subtle things to keep an eye on that can get you in trouble is r
 
 == What's here?
 This repository contains a small macOS (arm64) prototype that demonstrates rendering a Metal layer
-on top of a JavaFX window using the Java Foreign Function & Memory API to call a native Objective-C
-renderer. The demo includes a native Metal renderer (renderer.m) built into `librenderer.dylib` and
+on top of a JavaFX window using the Java Foreign Function & Memory API to call a native Swift
+renderer. The demo includes a native Metal renderer (`Renderer.swift`) built into `librenderer.dylib` and
 a JavaFX front-end (`NativeMetalApp.java`) that binds to the native API.
 
-- `renderer.m` - Mac/Cocoa Objective-C dynamically link library.
+- `Renderer.swift` - Mac/Cocoa Swift dynamic library exposing a C ABI (`@c` functions).
+- `renderer.m` - original Objective-C implementation, kept for comparison (its build command is commented out in `build_lib.sh`).
 - `build_lib.sh` - shell script to compile library.
 - `NativeMetalApp.java` - JavaFX demo app with Panama FFI that talks to native library (`librenderer.dylib`)
 
@@ -45,7 +46,7 @@ a JavaFX front-end (`NativeMetalApp.java`) that binds to the native API.
 == Requirements
 
 - macOS (Apple Silicon recommended)
-- Xcode Command Line Tools (clang/clang++ / make):
+- Xcode Command Line Tools with Swift 6.3 or later (`swiftc`, needed for the `@c` attribute):
 
 ```bash
 xcode-select --install
@@ -66,7 +67,9 @@ chmod +x build_lib.sh
 ./build_lib.sh
 ```
 
-This will compile `renderer.m` into `librenderer.dylib` using Metal and Cocoa frameworks.
+This will compile `Renderer.swift` into `librenderer.dylib` with `swiftc -emit-library`. The Metal, Cocoa and
+QuartzCore frameworks are linked automatically, and the Swift runtime ships with macOS (`/usr/lib/swift`),
+so the dylib loads in the JVM like any C library. Check the exported symbols with `nm -gU librenderer.dylib`.
 
 == Run the Java demo
 
@@ -120,14 +123,15 @@ ls -l librenderer.dylib
 	transparent overlays differs; prefer an in-process approach or use platform-specific windowing
 	APIs.
 - Cross-platform plan: create a small C ABI shim with the same exported functions (`init_metal_renderer`,
-	`update_renderer_bounds`, `render_frame`, `set_renderer_alpha`, `set_render_mode`, `update_rotation`)
+	`update_renderer_bounds`, `render_frame`, `set_renderer_alpha`, `set_render_mode`, `update_rotation`,
+	`destroy_metal_renderer`)
 	and provide per-platform implementations (Metal / Direct3D / Vulkan). Use the Panama Linker to
 	load the correct library per-OS at runtime.
 
 == Notes
 
 - This repo is a prototype or proof of concept. The native code intentionally performs UI/window operations on the
-	main thread via `dispatch_sync` / `execute_on_main_thread` helpers.
+	main thread via the `onMain` helper (`DispatchQueue.main.sync` + `MainActor.assumeIsolated`).
 - For production use consider error handling hardening, lifecycle management, and secure
 	permission handling for native access.
 

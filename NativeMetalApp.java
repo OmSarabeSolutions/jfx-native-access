@@ -50,8 +50,10 @@ public class NativeMetalApp extends Application {
     private MethodHandle setAlphaFunc;
     private MethodHandle setRenderModeFunc;
     private MethodHandle updateRotationFunc;
+    private MethodHandle destroyMetalFunc;
 
     private Pane rightMetalPane;
+    private AnimationTimer frameTimer;
     // Variables to keep track of drag baselines
     private double lastMouseX;
     private double lastMouseY;
@@ -105,7 +107,33 @@ public class NativeMetalApp extends Application {
         updateRotationFunc = linker.downcallHandle(
             lookup.find("update_rotation").orElseThrow(),
             FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.JAVA_FLOAT, ValueLayout.JAVA_FLOAT)
-        );   
+        );
+
+        destroyMetalFunc = linker.downcallHandle(
+            lookup.find("destroy_metal_renderer").orElseThrow(),
+            FunctionDescriptor.ofVoid(ValueLayout.ADDRESS)
+        );
+    }
+
+    @Override
+    public void stop() throws Exception {
+        destroyRenderer();
+    }
+
+    /** Stops the frame loop and frees the native renderer while the parent NSWindow still exists. */
+    private void destroyRenderer() {
+        if (frameTimer != null) {
+            frameTimer.stop();
+        }
+        if (nativeRendererContext != MemorySegment.NULL) {
+            MemorySegment ctx = nativeRendererContext;
+            nativeRendererContext = MemorySegment.NULL;
+            try {
+                destroyMetalFunc.invokeExact(ctx);
+            } catch (Throwable t) {
+                t.printStackTrace();
+            }
+        }
     }
 
     @Override
@@ -220,8 +248,11 @@ public class NativeMetalApp extends Application {
             }
         });
 
+        // Tear down before Glass releases the native window (stop() runs too late).
+        primaryStage.setOnHiding(e -> destroyRenderer());
+
         // Loop handles layout syncing and animation on the frame pulse
-        new AnimationTimer() {
+        frameTimer = new AnimationTimer() {
             @Override
             public void handle(long now) {
                 if (nativeRendererContext != MemorySegment.NULL) {
@@ -233,7 +264,8 @@ public class NativeMetalApp extends Application {
                     }
                 }
             }
-        }.start();
+        };
+        frameTimer.start();
     }
 
     // You can tie this integer to a JavaFX CheckBox or ToggleButton value
